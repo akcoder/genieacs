@@ -264,7 +264,6 @@ runTask = (currentRequest, task, methodResponse) ->
           )
       when tasks.STATUS_COMPLETED
         util.log("#{currentRequest.session.deviceId}: Completed task #{task.name}(#{task._id})")
-        console.log(deviceUpdates)
         #notify(currentRequest, deviceUpdates)
         
         updateDevice.commitUpdates(currentRequest.session.deviceId, deviceUpdates, true, (err) ->
@@ -422,7 +421,7 @@ notify = (currentRequest, cwmpRequest) ->
       util.log("#{currentRequest.session.deviceId}: Notifying server of event: #{matchingEvents}")
       request(options)
   else
-    console.log(cwmpRequest.methodRequest)
+    util.log(cwmpRequest.methodRequest)
 
 listener = (httpRequest, httpResponse) ->
   if httpRequest.method != 'POST'
