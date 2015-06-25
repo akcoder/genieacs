@@ -23,7 +23,7 @@
     "libxmljs": "0.11.0",
     "redis": "~0.12.1",
     "hiredis": "~0.1.17",
-    "mongodb": "~1.4.8"
+    "mongodb": "1.4.35"
   },
   "devDependencies": {
     "coffee-script": "~1.7.1"
