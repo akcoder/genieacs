@@ -221,7 +221,6 @@ this.addObject = (task, methodResponse, callback) ->
       task.session.subtask = {device : task.device, name : 'getParameterNames', parameterPath : "#{task.objectName}.#{task.session.instanceNumber}.", nextLevel : false}
       task.session.appliedParameterValues = []
       task.session.parameterNames = []
-      allDeviceUpdates.instanceName = [["#{task.objectName}.#{task.session.instanceNumber}", task.instanceName]] if task.instanceName?
     else
       callback(null, STATUS_OK, {type : 'AddObject', objectName : "#{task.objectName}."})
       return
@@ -252,7 +251,7 @@ this.addObject = (task, methodResponse, callback) ->
             if deviceUpdates and deviceUpdates.parameterValues?
               for p1 in deviceUpdates.parameterValues
                 for p2 in task.parameterValues
-                  if common.endsWith(p1[0], ".#{p2[0]}")
+                  if p1[0] == "#{task.objectName}.#{task.session.instanceNumber}.#{p2[0]}"
                     t = if p2[2] then p2[2] else p1[2]
                     v = common.matchType(p1[1], p2[1])
                     # TODO only include if writable
@@ -297,7 +296,7 @@ this.reboot = (task, methodResponse, callback) ->
     task.fault = methodResponse
     callback(null, STATUS_FAULT)
     return
-  
+
   if methodResponse.type isnt 'RebootResponse'
     callback(null, STATUS_OK, {type : 'Reboot'})
   else
@@ -355,8 +354,8 @@ this.download = (task, methodResponse, callback) ->
 this.customCommand = (task, methodResponse, callback) ->
   # TODO implement timeout
   customCommands.execute(task.device, task.command, (err, value) ->
-    if err?
-      task.fault = err
+    if err
+      task.fault = {name : err.name, message : err.message}
       callback(null, STATUS_FAULT)
     else
       commandName = task.command.split(' ', 2)[0]

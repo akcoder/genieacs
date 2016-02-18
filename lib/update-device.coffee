@@ -53,8 +53,8 @@ commitUpdates = (deviceId, deviceUpdates, commitQueue, callback) ->
   processBatch = (updatesBatch, cb) ->
     if updatesBatch.informEvents?
       update['$set']['_lastInform'] = now
-      update['$set']['_lastBoot'] if '1 BOOT' in updatesBatch.informEvents
-      update['$set']['_lastBootstrap'] if '0 BOOTSTRAP' in updatesBatch.informEvents
+      update['$set']['_lastBoot'] = now if '1 BOOT' in updatesBatch.informEvents
+      update['$set']['_lastBootstrap'] = now if '0 BOOTSTRAP' in updatesBatch.informEvents
 
     if updatesBatch.parameterValues?
       for p in updatesBatch.parameterValues
@@ -74,10 +74,6 @@ commitUpdates = (deviceId, deviceUpdates, commitQueue, callback) ->
     if updatesBatch.deletedObjects?
       for p in updatesBatch.deletedObjects
         update['$unset'][p] = 1
-
-    if updatesBatch.instanceName?
-      for i in updatesBatch.instanceName
-        update['$set']["#{i[0]}._name"] = i[1]
 
     if updatesBatch.parameterNames?
       presentPaths ?= {}

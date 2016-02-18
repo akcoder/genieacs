@@ -61,6 +61,10 @@ DEVICE_PRESET_REGEX = /^\/devices\/([a-zA-Z0-9\-\_\%]+)\/preset\/?$/
 DELETE_DEVICE_REGEX = /^\/devices\/([a-zA-Z0-9\-\_\%]+)\/?$/
 
 
+errorToString = (err) ->
+  "#{err.name}: #{err.message}"
+
+
 listener = (request, response) ->
   chunks = []
   bytes = 0
@@ -94,7 +98,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -106,7 +110,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -126,7 +130,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -138,7 +142,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -157,7 +161,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -169,7 +173,7 @@ listener = (request, response) ->
           )
           if err
             response.writeHead(500)
-            response.end(err)
+            response.end(errorToString(err))
             return
           response.writeHead(200)
           response.end()
@@ -190,22 +194,37 @@ listener = (request, response) ->
               )
               if err
                 response.writeHead(500)
-                response.end(err)
+                response.end(errorToString(err))
                 return
 
               if urlParts.query.connection_request?
                 apiFunctions.connectionRequest(deviceId, (err) ->
                   if err
-                    response.writeHead(202, {'Content-Type' : 'application/json'})
+                    response.writeHead(202, err.message, {'Content-Type' : 'application/json'})
                     response.end(JSON.stringify(task))
                   else
-                    apiFunctions.watchTask(task._id, config.get('DEVICE_ONLINE_THRESHOLD', deviceId), (err) ->
+                    apiFunctions.watchTask(task._id, config.get('DEVICE_ONLINE_THRESHOLD', deviceId), (err, status) ->
                       if err
-                        response.writeHead(202, {'Content-Type' : 'application/json'})
-                        response.end(JSON.stringify(task))
+                        response.writeHead(500)
+                        response.end(errorToString(err))
                         return
-                      response.writeHead(200, {'Content-Type' : 'application/json'})
-                      response.end(JSON.stringify(task))
+
+                      if status is 'timeout'
+                        response.writeHead(202, 'Task queued but not processed', {'Content-Type' : 'application/json'})
+                        response.end(JSON.stringify(task))
+                      else if status is 'fault'
+                        db.tasksCollection.findOne({_id : task._id}, (err, task) ->
+                          if err
+                            response.writeHead(500)
+                            response.end(errorToString(err))
+                            return
+
+                          response.writeHead(202, 'Task faulted', {'Content-Type' : 'application/json'})
+                          response.end(JSON.stringify(task))
+                        )
+                      else
+                        response.writeHead(200, {'Content-Type' : 'application/json'})
+                        response.end(JSON.stringify(task))
                     )
                 )
               else
@@ -218,7 +237,7 @@ listener = (request, response) ->
           apiFunctions.connectionRequest(deviceId, (err) ->
             if err
               response.writeHead 504
-              response.end()
+              response.end(errorToString(err))
               return
             response.writeHead 200
             response.end()
@@ -250,7 +269,7 @@ listener = (request, response) ->
           db.tasksCollection.remove({'_id' : taskId}, (err, removedCount) ->
             if err
               response.writeHead(500)
-              response.end(err)
+              response.end(errorToString(err))
               return
             response.writeHead(200)
             response.end()
@@ -303,9 +322,9 @@ listener = (request, response) ->
     else if PING_REGEX.test(urlParts.pathname)
       host = querystring.unescape(PING_REGEX.exec(urlParts.pathname)[1])
       require('child_process').exec("ping -w 1 -i 0.2 -c 3 #{host}", (err, stdout, stderr) ->
-        if err?
+        if err
           response.writeHead(404, {'Cache-Control' : 'no-cache'})
-          response.end()
+          response.end(errorToString(err))
           return
         response.writeHead(200, {'Content-Type' : 'text/plain', 'Cache-Control' : 'no-cache'})
         response.end(stdout)
@@ -320,7 +339,7 @@ listener = (request, response) ->
       apiFunctions.deleteDevice(deviceId, (err) ->
         if err
           response.writeHead(500)
-          response.end(err.message)
+          response.end(errorToString(err))
           return
         response.writeHead(200)
         response.end()
@@ -339,10 +358,16 @@ listener = (request, response) ->
 
       func = (aliases) ->
         if urlParts.query.query?
-          q = JSON.parse(urlParts.query.query)
+          try
+            q = JSON.parse(urlParts.query.query)
+          catch err
+            response.writeHead(400)
+            response.end(errorToString(err))
+            return
         else
           q = {}
         q = query.expand(q, aliases) if collectionName is 'devices'
+        q = query.substituteObjectId(q) if collectionName is 'tasks'
 
         if urlParts.query.projection?
           projection = {}
@@ -360,9 +385,16 @@ listener = (request, response) ->
           sort = {}
           for k,v of s
             if aliases[k]?
-              sort[a] = v for a in aliases[k]
+              for a in aliases[k]
+                if a[a.lastIndexOf('.')+1] != '_' and collectionName is 'devices'
+                  sort["#{a}._value"] = v
+                else
+                  sort[a] = v
             else
-              sort[k] = v
+              if k[k.lastIndexOf('.') + 1] != '_' and collectionName is 'devices'
+                sort["#{k}._value"] = v
+              else
+                sort[k] = v
           cur.sort(sort)
 
         cur.skip(parseInt(urlParts.query.skip)) if urlParts.query.skip?

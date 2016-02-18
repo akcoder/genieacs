@@ -1,3 +1,5 @@
 *~
 *.js
+lib/*.map
 node_modules
+debug/*

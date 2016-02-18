@@ -117,6 +117,9 @@ connectionRequest = (deviceId, callback) ->
           authString = auth.digest(username, password, uri.path, 'GET', null, authHeader)
 
         conReq(connectionRequestUrl, authString, (statusCode, authHeader) ->
+          if statusCode == 0
+            # Workaround for some devices unexpectedly closing the connection
+            return conReq(connectionRequestUrl, authString, (statusCode) -> callback(statusToError(statusCode)))
           callback(statusToError(statusCode))
         )
       else
@@ -127,15 +130,19 @@ connectionRequest = (deviceId, callback) ->
 
 watchTask = (taskId, timeout, callback) ->
   setTimeout( () ->
-    db.tasksCollection.findOne({_id : taskId}, {'_id' : 1}, (err, task) ->
+    db.tasksCollection.findOne({_id : taskId}, {'_id' : 1, 'fault' : 1}, (err, task) ->
+      return callback(err) if err
+
       if task
         timeout -= 500
-        if timeout < 0
-          callback('timeout')
+        if task.fault?
+          callback(null, 'fault')
+        else if timeout <= 0
+          callback(null, 'timeout')
         else
           watchTask(taskId, timeout, callback)
       else
-        callback(err)
+        callback(null, 'completed')
     )
   , 500)
 
